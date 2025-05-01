@@ -5,6 +5,20 @@ variable "aws_region" {
   
 }
 
+variable "ax" {
+  default = "us-east-1a"
+}
+
+
+# variable "ay" {
+#   default = "us-east-1b"
+# }
+
+
+variable "az" {
+  default = "us-east-1c"
+}
+
 variable "project_name" {
   description = "The name of the project"
   type        = string
@@ -18,3 +32,7 @@ variable "environment" {
   default     = "dev"
 }
 
+# variable "aws_vpc" {
+#     description = "The VPC ID"
+#     type        = string 
+# }
