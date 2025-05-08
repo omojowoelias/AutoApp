@@ -71,7 +71,6 @@ resource "aws_route" "private_nat_route" {
 }
 
 
-
 # Associate private subnets with private route table
 resource "aws_route_table_association" "private_subnet_1_assoc" {
   subnet_id      = aws_subnet.private_subnet_1.id
@@ -186,4 +185,193 @@ resource "aws_nat_gateway" "nat" {
   tags = {
     Name = "NAT_Gateway"
   }
+}
+# Create securiry group for the application load balancer
+# terraform aws create security group
+resource "aws_security_group" "alb_sg" {
+  vpc_id = aws_vpc.my_vpc.id
+  name   = "ALB_SG"
+  description = "Allow HTTP and HTTPS traffic"
+    ingress {
+        from_port   = 80
+        to_port     = 80
+        protocol    = "tcp"
+        cidr_blocks = ["0.0.0.0/0"]
+    }
+    ingress {
+        from_port   = 443
+        to_port     = 443
+        protocol    = "tcp"
+        cidr_blocks = ["0.0.0.0/0"]
+    }
+    egress {
+        from_port   = 0
+        to_port     = 0
+        protocol    = "-1"
+        cidr_blocks = ["0.0.0.0/0"]
+    }
+  # Add tags to the security group
+  tags = {
+    Name = "ALB_SG"
+  }
+}
+# Create Application Load Balancer  
+resource "aws_lb" "my_alb" {
+  name               = "my-alb"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb_sg.id]
+  subnets            = [aws_subnet.public_subnet_1.id, aws_subnet.public_subnet_2.id, aws_subnet.public_subnet_3.id]
+  enable_deletion_protection = false
+  enable_http2 = true
+  idle_timeout {
+    timeout_seconds = 60
+  }
+  tags = {
+    Name = "My_ALB"
+  }
+}
+# # Create Target Group for ALB
+# resource "aws_lb_target_group" "my_target_group" {
+#   name     = "my-target-group"
+#   port     = 80
+#   protocol = "HTTP"
+#   vpc_id   = aws_vpc.my_vpc.id
+#   health_check {
+#     path                = "/"
+#     interval            = 30
+#     timeout             = 5
+#     healthy_threshold  = 2
+#     unhealthy_threshold = 2
+#     matcher {
+#       http_code = "200,302"
+#     }
+#   }
+#   tags = {
+#     Name = "My_Target_Group"
+#   }
+# }
+# # Create Listener for ALB
+# resource "aws_lb_listener" "my_listener" {
+#   load_balancer_arn = aws_lb.my_alb.arn
+#   port              = 80
+#   protocol          = "HTTP"
+#   default_action {
+#     type = "forward"
+#     target_group_arn = aws_lb_target_group.my_target_group.arn
+#   }
+#   tags = {
+#     Name = "My_Listener"
+#   }
+# }
+# Create security group for bastion host
+resource "aws_security_group" "bastion_sg" {
+  vpc_id = aws_vpc.my_vpc.id
+  name   = "Bastion_SG"
+  description = "Allow SSH traffic from specific IP"
+    ingress {
+        from_port   = 22
+        to_port     = 22
+        protocol    = "tcp"
+        cidr_blocks = ["0.0.0.0/0"] # Replace with your IP address
+    }
+    egress {
+        from_port   = 0
+        to_port     = 0
+        protocol    = "-1"
+        cidr_blocks = ["0.0.0.0/0"]
+    }
+  # Add tags to the security group
+  tags = {
+    Name = "Bastion_SG"
+  }
+}
+# Create Bastion Host
+resource "aws_instance" "bastion" {
+  ami           = "ami-0c55b159cbfafe1f0" # Replace with the latest Amazon Linux 2 AMI ID
+  instance_type = "t2.micro"
+  subnet_id     = aws_subnet.public_subnet_1.id
+  key_name      = "your-key-pair-name" # Replace with your key pair name
+  security_groups = [aws_security_group.bastion_sg.name]
+  tags = {
+    Name = "Bastion_Host"
+  }
+}
+# Create Security Group for the webserver
+resource "aws_security_group" "web_sg" {
+  vpc_id = aws_vpc.my_vpc.id
+  name   = "Web_SG"
+  description = "Allow HTTP and HTTPS traffic from ALB"
+    ingress {
+        from_port   = 80
+        to_port     = 80
+        protocol    = "tcp"
+        security_groups = [aws_security_group.alb_sg.id]
+    }
+    ingress {
+        from_port   = 443
+        to_port     = 443
+        protocol    = "tcp"
+        security_groups = [aws_security_group.alb_sg.id]
+    }
+    egress {
+        from_port   = 0
+        to_port     = 0
+        protocol    = "-1"
+        cidr_blocks = ["0.0.0.0/0"]
+    }
+    # Add tags to the security group
+    tags = {
+      Name = "Web_SG"
+    }
+}
+# Create EC2 Instance for Web Server
+resource "aws_instance" "web_server" {
+  ami           = "ami-0c55b159cbfafe1f0" # Replace with the latest Amazon Linux 2 AMI ID
+  instance_type = "t2.micro"
+  subnet_id     = aws_subnet.private_subnet_1.id
+  key_name      = "your-key-pair-name" # Replace with your key pair name
+  security_groups = [aws_security_group.web_sg.name]
+  tags = {
+    Name = "Web_Server"
+  }
+}
+# # Create RDS Instance
+# resource "aws_db_instance" "my_rds" {
+#   identifier         = "my-rds-instance"
+#   engine             = "mysql"
+#   engine_version     = "8.0"
+#   instance_class     = "db.t2.micro"
+#   allocated_storage   = 20
+#   storage_type       = "gp2"
+#   db_subnet_group_name = aws_db_subnet_group.my_db_subnet_group.name
+#   vpc_security_group_ids = [aws_security_group.private_sg.id]
+#   username           = "admin"
+#   password           = "yourpassword" # Replace with a secure password
+#   skip_final_snapshot = true
+#   tags = {
+#     Name = "My_RDS_Instance"
+#   }
+# }
+# Create Security Group for RDS
+resource "aws_security_group" "rds_sg" {
+  vpc_id = aws_vpc.my_vpc.id
+  name   = "RDS_SG"
+  description = "Allow MySQL traffic from Web Server"
+    ingress {
+        from_port   = 3306
+        to_port     = 3306
+        protocol    = "tcp"
+        security_groups = [aws_security_group.web_sg.id]
+    }
+    egress {
+        from_port   = 0
+        to_port     = 0
+        protocol    = "-1"
+        cidr_blocks = ["0.0.0.0/0"]
+    }
+    # Add tags to the security group
+    tags = {
+      Name = "RDS_SG"
+    }
 }
